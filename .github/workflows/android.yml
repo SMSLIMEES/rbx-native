@@ -81,9 +81,32 @@ jobs:
 
       - name: Assemble the APK
         working-directory: packaging/android
-        run: ./gradlew --no-daemon assembleDebug assembleRelease
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --console=plain assembleDebug assembleRelease 2>&1 | tee "$RUNNER_TEMP/gradle.log"
 
-      # CI has no upload key, so `assembleRelease` leaves an unsigned APK that
+      # A failed build's log is only visible to someone signed in to the web UI,
+      # and this one is being written from a sandbox that cannot read it: fold
+      # the interesting part into an annotation the API serves.
+      - name: Explain a failed build
+        if: failure()
+        run: |
+          log="$RUNNER_TEMP/gradle.log"
+          [ -f "$log" ] || exit 0
+          {
+            echo "### Gradle"
+            echo '```'
+            grep -E "^e: |^w: .*(error|warning)|FAILURE|What went wrong|^\* Try|Caused by|error:|Execution failed" "$log" | head -n 40
+            echo '```'
+            echo "### Tail"
+            echo '```'
+            tail -n 40 "$log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^e: |error:|Execution failed|What went wrong" "$log" | head -n 5 | while read -r line; do
+            echo "::error title=Gradle::$line"
+          done
+
       # will not install. Sign it with a throwaway key (valid for decades, but
       # a different key each run, so a new build replaces the old one after an
       # uninstall): an APK that installs is worth more than a stable identity.
