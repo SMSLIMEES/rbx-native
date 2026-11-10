@@ -48,6 +48,15 @@ class MainActivity : Activity() {
         proxy = AssetProxy(this)
         server = LocalServer(this, proxy)
         port = server.start() ?: 0
+        // Rotation recreates the activity but not the file: the place the
+        // user opened before is still at `/place`, so put it back.
+        if (savedInstanceState?.getBoolean(STATE_HAS_PLACE) == true) {
+            val target = File(File(cacheDir, "place"), "current")
+            if (target.isFile && target.length() > 0) {
+                server.place = target
+                server.placeName = savedInstanceState.getString(STATE_PLACE_NAME) ?: "place.rbxl"
+            }
+        }
 
         webView = WebView(this).apply {
             setBackgroundColor(0xFF1B1B1F.toInt())
@@ -108,6 +117,12 @@ class MainActivity : Activity() {
         }
 
         consumeIntent(intent)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_HAS_PLACE, server.place != null)
+        outState.putString(STATE_PLACE_NAME, server.placeName)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -284,5 +299,7 @@ class MainActivity : Activity() {
     companion object {
         private const val TAG = "rbxview"
         private const val REQUEST_PICK = 1
+        private const val STATE_HAS_PLACE = "has-place"
+        private const val STATE_PLACE_NAME = "place-name"
     }
 }
