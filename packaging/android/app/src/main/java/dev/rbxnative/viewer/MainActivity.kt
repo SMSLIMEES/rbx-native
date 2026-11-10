@@ -60,12 +60,12 @@ class MainActivity : Activity() {
 
         webView = WebView(this).apply {
             setBackgroundColor(0xFF1B1B1F.toInt())
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
         }
-        setContentView(
-            webView,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-        )
+        setContentView(webView)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         webView.settings.apply {
@@ -162,7 +162,11 @@ class MainActivity : Activity() {
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 } catch (err2: ActivityNotFoundException) {
-                    Toast.makeText(this, "No browser to open $url in", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this@MainActivity,
+                        "No browser to open $url in",
+                        Toast.LENGTH_LONG,
+                    ).show()
                 }
             }
         }
@@ -230,7 +234,7 @@ class MainActivity : Activity() {
                 Log.w(TAG, "cannot open $uri", err)
                 runOnUiThread {
                     Toast.makeText(
-                        this,
+                        this@MainActivity,
                         "Cannot open $name: ${err.message}",
                         Toast.LENGTH_LONG,
                     ).show()
