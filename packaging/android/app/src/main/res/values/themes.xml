@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The page owns its whole surface: a plain, dark, edge-to-edge frame,
+         no action bar, no splash of a second colour. -->
+    <style name="Theme.RbxView" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#1b1b1f</item>
+        <item name="android:statusBarColor">#1b1b1f</item>
+        <item name="android:navigationBarColor">#1b1b1f</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

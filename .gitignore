@@ -28,3 +28,11 @@ docs/redesign/
 
 # tokenforge plans, cheat sheets and run state.
 /.forge/
+
+# The Android app's Gradle state and the page it copies out of the browser
+# build (packaging/android/app/build.gradle.kts).
+/packaging/android/.gradle/
+/packaging/android/build/
+/packaging/android/app/build/
+/packaging/android/local.properties
+/packaging/android/app/src/main/assets/web/

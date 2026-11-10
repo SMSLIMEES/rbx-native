@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>rbxview</title>
 <link rel="icon" href="data:,">
 <style>
@@ -15,7 +15,8 @@
   [hidden] { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
-  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none;
+    touch-action: none; }
   #panel { position: fixed; top: 12px; left: 12px; width: 232px; max-height: calc(100% - 24px);
     overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
     padding: 12px; backdrop-filter: blur(6px); }
@@ -33,6 +34,10 @@
   #hint { position: fixed; inset: 0; display: grid; place-items: center; text-align: center;
     color: var(--muted); pointer-events: none; }
   #hint strong { color: var(--text); }
+  #hint .actions { margin-top: 18px; display: flex; gap: 10px; justify-content: center;
+    pointer-events: auto; }
+  #hint .actions button { width: auto; min-width: 180px; padding: 10px 16px; font-size: 14px; }
+  #hint .actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   body.dragging #hint { color: var(--accent); }
   #warnings { max-height: 140px; overflow: auto; font-size: 11px; color: var(--warn);
     white-space: pre-wrap; word-break: break-word; margin: 0; }
@@ -53,7 +58,26 @@
   #picked { border-top: 1px solid var(--line); padding: 8px 12px; font-size: 12px;
     color: var(--muted); word-break: break-word; min-height: 34px; }
   #picked strong { color: var(--text); font-weight: 600; }
-  @media (max-width: 760px) { #explorer { top: auto; height: 40%; left: 12px; width: auto; } }
+  /* Touch controls (phones/tablets, and narrow windows): a joystick bottom-left,
+     hold buttons bottom-right, panels as top sheets so the bottom stays free. */
+  #touch { display: none; }
+  @media (pointer: coarse), (max-width: 760px) {
+    #touch { display: block; }
+    #stick { position: fixed; left: 18px; bottom: 24px; width: 128px; height: 128px;
+      border-radius: 50%; background: rgba(30, 30, 36, 0.55); border: 1px solid var(--line);
+      touch-action: none; }
+    #knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px;
+      margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(230, 230, 234, 0.35); }
+    #touch-buttons { position: fixed; right: 18px; bottom: 24px; display: flex;
+      flex-direction: column; gap: 10px; }
+    #touch-buttons button { width: 60px; height: 60px; border-radius: 50%; font-size: 20px;
+      padding: 0; background: rgba(30, 30, 36, 0.65); touch-action: none;
+      user-select: none; -webkit-user-select: none; }
+    #explorer { top: 56px; bottom: auto; height: 42%; left: 12px; right: 12px; width: auto; }
+    #panel { max-height: 42%; }
+    #toggle { left: 12px; }
+    #status { left: 50%; right: auto; transform: translateX(-50%); bottom: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -83,7 +107,8 @@
 
   <h2>Camera</h2>
   <p class="keys">Right-drag to look · WASD/arrows to fly · Q/E down/up · Shift slow ·
-    wheel to dolly (while looking: flight speed) · F to recentre</p>
+    wheel to dolly (while looking: flight speed) · F to recentre<br>
+    Touch: joystick to fly · drag to look · pinch to dolly · tap to select</p>
 
   <h2>Warnings</h2>
   <pre id="warnings"></pre>
@@ -94,6 +119,14 @@
   <div id="picked">Click a part to select it · Shift/Ctrl adds · Alt picks the part behind</div>
 </div>
 <div id="status">no place loaded</div>
+<div id="touch">
+  <div id="stick"><div id="knob"></div></div>
+  <div id="touch-buttons">
+    <button id="btn-up" title="Fly up (E)">▲</button>
+    <button id="btn-down" title="Fly down (Q)">▼</button>
+    <button id="btn-home" title="Recentre (F)">⌂</button>
+  </div>
+</div>
 
 <script type="module">
 import init, { Viewer } from "./pkg/rbx_viewer.js";
@@ -147,6 +180,21 @@ async function open(bytes, name) {
   }
 }
 
+// Whatever `rbxview --serve` (or the Android app's local server) has at
+// `/place`. The app calls `window.refreshPlace()` after a file is picked; the
+// startup call is this page's own, in case one was already open.
+async function loadFromUrl(url) {
+  const response = await fetch(url).catch(() => null);
+  if (!response?.ok) return;
+  const name = decodeURIComponent(response.headers.get("X-Place-Name") ?? url.split("/").pop());
+  open(new Uint8Array(await response.arrayBuffer()), name);
+}
+window.refreshPlace = () => {
+  // A pick before the module finished loading has no viewer yet; the startup
+  // fetch already ran and found nothing, so take the place now.
+  loadFromUrl("place");
+};
+
 let lastStatus = 0;
 function tick(now) {
   try {
@@ -173,10 +221,15 @@ for (const box of document.querySelectorAll("[data-option]")) {
 quality.addEventListener("change", () => viewer?.set_quality(Number(quality.value)));
 
 // Files: the picker, drag and drop, and whatever `rbxview --serve` was given.
+// In the Android app the native picker (Storage Access Framework) replaces the
+// file input, through the `Android` bridge the app injects.
 async function openFile(file) {
   open(new Uint8Array(await file.arrayBuffer()), file.name);
 }
-$("pick").addEventListener("click", () => $("file").click());
+$("pick").addEventListener("click", () => {
+  if (window.Android?.pickPlace) window.Android.pickPlace();
+  else $("file").click();
+});
 $("file").addEventListener("change", (e) => e.target.files[0] && openFile(e.target.files[0]));
 addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("dragging"); });
 addEventListener("dragleave", () => document.body.classList.remove("dragging"));
@@ -234,16 +287,147 @@ function togglePanels() {
 $("toggle").addEventListener("click", togglePanels);
 
 // Selection: a left click on the canvas, Studio's rules (see `Viewer::click`).
+// Mouse/pen only: touch taps are handled by the touch block below, so a tap
+// never selects twice.
 let down = null;
-canvas.addEventListener("pointerdown", (e) => { if (e.button === 0) down = [e.clientX, e.clientY]; });
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "touch") return;
+  if (e.button === 0) down = [e.clientX, e.clientY];
+});
 canvas.addEventListener("pointerup", (e) => {
+  if (e.pointerType === "touch") return;
   if (e.button !== 0 || !viewer || !down) return;
   const moved = Math.hypot(e.clientX - down[0], e.clientY - down[1]);
   down = null;
   if (moved > 4) return;
-  const ratio = canvas.width / canvas.clientWidth;
-  const ids = viewer.click(e.offsetX * ratio, e.offsetY * ratio, e.shiftKey || e.ctrlKey || e.metaKey, e.altKey);
+  const [x, y] = canvasPoint(e);
+  const ids = viewer.click(x, y, e.shiftKey || e.ctrlKey || e.metaKey, e.altKey);
   showSelection(Array.from(ids), true);
+});
+
+// Touch controls: one finger drags to look (a tap selects), two fingers pinch
+// to dolly, the joystick flies, the buttons go up/down/recentre. Everything is
+// forwarded through the same `Viewer` calls the mouse and keyboard use.
+const pointers = new Map(); // pointerId -> {x, y}
+let lookStart = null, looking = false, pinchDist = 0;
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.pointerType !== "touch") return;
+  try { canvas.setPointerCapture(e.pointerId); } catch { /* already released */ }
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) { lookStart = { x: e.clientX, y: e.clientY }; looking = false; }
+  if (pointers.size === 2) {
+    // A second finger cancels the look and starts a pinch.
+    if (looking) { viewer?.look(false); looking = false; }
+    const [a, b] = [...pointers.values()];
+    pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+  e.preventDefault();
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (e.pointerType !== "touch" || !pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    // Spreading the fingers dollies forward, like a wheel notch away.
+    if (pinchDist > 0) viewer?.wheel((dist - pinchDist) / 40);
+    pinchDist = dist;
+    e.preventDefault();
+    return;
+  }
+  if (!lookStart) return;
+  const moved = Math.hypot(e.clientX - lookStart.x, e.clientY - lookStart.y);
+  if (!looking && moved > 8) { looking = true; viewer?.look(true); }
+  if (looking) viewer?.mouse_move(e.clientX - prev.x, e.clientY - prev.y);
+  e.preventDefault();
+});
+function touchEnd(e) {
+  if (e.pointerType !== "touch" || !pointers.has(e.pointerId)) return;
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinchDist = 0;
+  if (pointers.size === 0) {
+    if (looking) {
+      viewer?.look(false);
+      looking = false;
+    } else if (lookStart && viewer) {
+      const moved = Math.hypot(e.clientX - lookStart.x, e.clientY - lookStart.y);
+      if (moved <= 8) {
+        const [x, y] = canvasPoint(e);
+        const ids = viewer.click(x, y, false, false);
+        showSelection(Array.from(ids), true);
+      }
+    }
+    lookStart = null;
+  }
+  e.preventDefault();
+}
+canvas.addEventListener("pointerup", touchEnd);
+canvas.addEventListener("pointercancel", touchEnd);
+
+// The joystick: its direction becomes the WASD keys, released on let-go.
+const stick = $("stick"), knob = $("knob");
+const STICK_KEYS = ["KeyW", "KeyS", "KeyA", "KeyD"];
+const stickState = { id: null, keys: new Set() };
+function applyStick(x, y) {
+  const next = new Set();
+  if (y < -0.25) next.add("KeyW");
+  if (y > 0.25) next.add("KeyS");
+  if (x < -0.25) next.add("KeyA");
+  if (x > 0.25) next.add("KeyD");
+  for (const code of STICK_KEYS) {
+    if (stickState.keys.has(code) !== next.has(code)) viewer?.key(code, next.has(code));
+  }
+  stickState.keys = next;
+}
+function stickVector(e) {
+  const rect = stick.getBoundingClientRect();
+  let dx = (e.clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
+  let dy = (e.clientY - (rect.top + rect.height / 2)) / (rect.height / 2);
+  const len = Math.hypot(dx, dy);
+  if (len > 1) { dx /= len; dy /= len; }
+  knob.style.transform = `translate(${dx * 34}px, ${dy * 34}px)`;
+  return [dx, dy];
+}
+stick.addEventListener("pointerdown", (e) => {
+  if (stickState.id !== null) return;
+  stickState.id = e.pointerId;
+  try { stick.setPointerCapture(e.pointerId); } catch { /* already released */ }
+  const [x, y] = stickVector(e);
+  applyStick(x, y);
+  e.preventDefault();
+  e.stopPropagation();
+});
+stick.addEventListener("pointermove", (e) => {
+  if (e.pointerId !== stickState.id) return;
+  const [x, y] = stickVector(e);
+  applyStick(x, y);
+  e.preventDefault();
+});
+function stickEnd(e) {
+  if (e.pointerId !== stickState.id) return;
+  stickState.id = null;
+  knob.style.transform = "";
+  applyStick(0, 0);
+}
+stick.addEventListener("pointerup", stickEnd);
+stick.addEventListener("pointercancel", stickEnd);
+
+// Hold buttons: up/down fly while held, recentre jumps back to the spawn view.
+function holdButton(id, code) {
+  const el = $(id);
+  const on = (e) => { viewer?.key(code, true); e.preventDefault(); };
+  const off = (e) => { viewer?.key(code, false); e.preventDefault(); };
+  el.addEventListener("pointerdown", on);
+  el.addEventListener("pointerup", off);
+  el.addEventListener("pointerleave", off);
+  el.addEventListener("pointercancel", off);
+}
+holdButton("btn-up", "KeyE");
+holdButton("btn-down", "KeyQ");
+$("btn-home").addEventListener("pointerdown", (e) => {
+  viewer?.key("KeyF", true);
+  e.preventDefault();
 });
 
 // Explorer: the place's tree, read-only, loaded a level at a time.
@@ -300,6 +484,13 @@ function toggle(id, open) {
   entry.box.hidden = !open;
   entry.twisty.textContent = open ? "▾" : "▸";
 }
+/** A point on the canvas in drawing-buffer pixels, for `Viewer::click`. */
+function canvasPoint(e) {
+  const rect = canvas.getBoundingClientRect();
+  const ratio = canvas.width / canvas.clientWidth;
+  return [(e.clientX - rect.left) * ratio, (e.clientY - rect.top) * ratio];
+}
+
 function showSelection(ids, reveal) {
   for (const { row } of rows.values()) row.classList.remove("selected");
   if (reveal && ids.length) {
@@ -322,13 +513,38 @@ function showSelection(ids, reveal) {
   }
 }
 
+// A phone has no drag and drop and, in the app, no file input: the picker is
+// the way in, so the hint is a button rather than a line of text, and the
+// panels (which took half the screen) start out of the way.
+if (matchMedia("(pointer: coarse)").matches) {
+  $("panel").hidden = true;
+  $("explorer").hidden = true;
+}
+if (window.Android?.pickPlace) {
+  $("hint").innerHTML =
+    "<div><strong>rbxview</strong><br>Local places and models from this phone" +
+    "<div class=\"actions\"><button id=\"open-place\" class=\"primary\">Open place or model…</button></div></div>";
+  $("open-place").addEventListener("click", () => window.Android.pickPlace());
+}
+
 await init();
 if (!navigator.gpu) {
-  $("hint").innerHTML = "<div><strong>This browser has no WebGPU.</strong><br>Try a current Chrome, Edge, Firefox or Safari.</div>";
+  // Chrome on a Pixel has WebGPU; the system WebView it is embedded in does
+  // not always expose it. The app can open this same URL in Chrome, where the
+  // page, wasm and asset proxy all work unchanged.
+  if (window.Android?.openInBrowser) {
+    $("hint").innerHTML =
+      "<div><strong>This WebView has no WebGPU.</strong><br>" +
+      "Chrome on this phone does: the same page runs there." +
+      "<div class=\"actions\">" +
+      "<button id=\"use-chrome\" class=\"primary\">Open in Chrome</button></div></div>";
+    $("use-chrome")?.addEventListener("click", () => window.Android.openInBrowser());
+  } else {
+    $("hint").innerHTML = "<div><strong>This browser has no WebGPU.</strong><br>Try a current Chrome, Edge, Firefox or Safari.</div>";
+  }
 } else {
   const place = params.get("place") ?? "place";
-  const response = await fetch(place).catch(() => null);
-  if (response?.ok) open(new Uint8Array(await response.arrayBuffer()), place.split("/").pop());
+  loadFromUrl(place);
 }
 </script>
 </body>

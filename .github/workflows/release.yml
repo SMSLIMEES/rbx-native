@@ -150,6 +150,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Fetching the APK this tag's `android.yml` run built.
+      actions: read
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
@@ -158,6 +160,29 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      # The Android app is built by `android.yml`, which runs on the same
+      # branches and builds the same commit: one APK in the release, not a
+      # second Gradle/NDK build here.
+      - name: The Android APK
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          artifact=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=rbxview-android-$GITHUB_SHA" \
+            --jq '.artifacts[0].id // empty')
+          if [ -z "$artifact" ]; then
+            echo "::warning::no android artifact for $GITHUB_SHA; publishing without an APK"
+            exit 0
+          fi
+          mkdir -p android
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > android/apk.zip
+          unzip -j android/apk.zip 'release/*.apk' -d android
+          rm android/apk.zip
+          # One APK in the release, named for the tag.
+          apk=$(ls android/*.apk | head -n 1)
+          cp "$apk" "release/rbxview-$VERSION-android.apk"
 
       # The tool the key was made with, so the two formats always agree.
       - name: Install rsign2
@@ -171,7 +196,11 @@ jobs:
           mkdir ../release
           mv package-*/* ../release/
           cd ../release
-          sha256sum rbxstudio-* > SHA256SUMS
+          # The APK is absent when its workflow did not run (see above); the
+          # desktop packages are the ones the updater checks, so they alone
+          # are required.
+          shopt -s nullglob
+          sha256sum rbxstudio-* rbxview-* > SHA256SUMS
           cat SHA256SUMS
           umask 077
           key="$RUNNER_TEMP/minisign.key"
