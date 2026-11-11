@@ -73,10 +73,15 @@
     #touch-buttons button { width: 60px; height: 60px; border-radius: 50%; font-size: 20px;
       padding: 0; background: rgba(30, 30, 36, 0.65); touch-action: none;
       user-select: none; -webkit-user-select: none; }
+    /* Both sheets hang from the top and leave the bottom to the controls. */
     #explorer { top: 56px; bottom: auto; height: 42%; left: 12px; right: 12px; width: auto; }
-    #panel { max-height: 42%; }
-    #toggle { left: 12px; }
-    #status { left: 50%; right: auto; transform: translateX(-50%); bottom: 12px; }
+    #panel { top: 56px; max-height: 46%; }
+    /* The toggle stays put so it can close the sheet it opened. */
+    #toggle { top: 12px; left: 12px; width: auto; padding: 6px 12px; }
+    /* Clear of the joystick and the buttons, and out from under a thumb. */
+    #status { left: 50%; right: auto; transform: translateX(-50%); bottom: 12px;
+      max-width: calc(100% - 340px); overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; font-size: 11px; padding: 3px 8px; }
   }
 </style>
 </head>
@@ -283,6 +288,7 @@ function togglePanels() {
   const hide = !$("panel").hidden;
   $("panel").hidden = hide;
   $("explorer").hidden = hide;
+  $("toggle").textContent = hide ? "Panels" : "Close";
 }
 $("toggle").addEventListener("click", togglePanels);
 
@@ -519,6 +525,7 @@ function showSelection(ids, reveal) {
 if (matchMedia("(pointer: coarse)").matches) {
   $("panel").hidden = true;
   $("explorer").hidden = true;
+  $("toggle").textContent = "Panels";
 }
 if (window.Android?.pickPlace) {
   $("hint").innerHTML =
