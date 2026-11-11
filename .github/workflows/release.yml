@@ -176,7 +176,7 @@ jobs:
             echo "::warning::no android artifact for $GITHUB_SHA; publishing without an APK"
             exit 0
           fi
-          mkdir -p android
+          mkdir -p android release
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > android/apk.zip
           unzip -j android/apk.zip 'release/*.apk' -d android
           rm android/apk.zip
@@ -193,7 +193,7 @@ jobs:
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
-          mkdir ../release
+          mkdir -p ../release
           mv package-*/* ../release/
           cd ../release
           # The APK is absent when its workflow did not run (see above); the
