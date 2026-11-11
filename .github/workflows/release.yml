@@ -169,9 +169,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          artifact=$(gh api \
-            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=rbxview-android-$GITHUB_SHA" \
-            --jq '.artifacts[0].id // empty')
+          # `android.yml` runs on the same tag and uploads its APK whenever the
+          # Gradle build pans out; tag pushes start both at once, so give it a
+          # few minutes rather than publishing a release without the app.
+          artifact=
+          for attempt in $(seq 1 30); do
+            artifact=$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts?name=rbxview-android-$GITHUB_SHA" \
+              --jq '.artifacts[0].id // empty')
+            [ -n "$artifact" ] && break
+            echo "no android artifact yet (attempt $attempt), waiting"
+            sleep 20
+          done
           if [ -z "$artifact" ]; then
             echo "::warning::no android artifact for $GITHUB_SHA; publishing without an APK"
             exit 0
@@ -221,6 +230,12 @@ jobs:
               *.zip) unzip -l "$package" ;;
               *) tar -tzvf "$package" ;;
             esac
+          done
+          # The APK's own contents, the way `android.yml` checks them: a
+          # release that installs but cannot start is worse than none.
+          for apk in rbxview-*.apk; do
+            echo "== $apk"
+            unzip -l "$apk" | grep -E "assets/web/(index.html|pkg/)" || true
           done
 
       - name: Keep the dry run's packages
