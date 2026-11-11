@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A stud seen from above: a square base with a round top, the shape a
+     Roblox part has, drawn in the page's own accent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#4c8dff"
+        android:pathData="M34,40 L74,40 L74,70 L34,70 Z" />
+    <path
+        android:fillColor="#e6e6ea"
+        android:pathData="M39,34 L69,34 L69,58 L39,58 Z" />
+    <path
+        android:fillColor="#9a9aa6"
+        android:pathData="M39,34 L69,34 L69,40 L39,40 Z" />
+</vector>

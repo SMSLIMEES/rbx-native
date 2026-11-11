@@ -54,6 +54,7 @@ something's broken anyway, open an issue.
 | Windows | **Supported, the editor runs.** CI runs clippy, the build and the tests on `windows-latest` for every change. Known gaps are listed under [Platform](ROADMAP.md#platform) in the roadmap. If something breaks on your machine, please open an issue. |
 | macOS | Not supported. CI builds it and runs the tests on `macos-latest` so it keeps compiling, but nobody actually runs the editor there. |
 | Wayland | Works, but without pointer lock (the cursor isn't captured). |
+| Android | **Viewer only.** `rbxview` runs on Android 12+ phones as an app, the same wasm/WebGPU renderer as the browser build in a WebView, with touch controls and a file picker. The editor (`rbxstudio`) is desktop only. See [packaging/android/README.md](packaging/android/README.md). |
 
 ## Installing
 
@@ -63,6 +64,18 @@ Flathub you build it yourself, see
 need to run programs on the host (the network simulator, the controller
 emulator, device simulation in Sober) aren't in the Flatpak build, the app
 says so where they'd be. Otherwise build from source, below.
+
+## Android
+
+`rbxview` runs on Android phones (12 and up), the pixel-tested way: the same
+browser build, in an app that serves it from loopback, resolves Roblox's
+assets itself and replaces the file input with the system picker. Touch:
+a joystick to fly, drag to look, pinch to dolly, tap to select.
+
+`.github/workflows/android.yml` builds the APK on every change to the viewer
+or the app; the artifact of a green run is installable as is. Prebuilt APKs
+also land on tagged releases. Building it yourself and the WebView/Chrome
+WebGPU caveat are in [packaging/android/README.md](packaging/android/README.md).
 
 ## Building
 

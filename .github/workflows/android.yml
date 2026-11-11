@@ -1,0 +1,161 @@
+name: android
+
+# Builds rbxview for Android: the wasm/WebGPU viewer the browser version uses,
+# wrapped in the Kotlin app under `packaging/android`. The sandbox a change is
+# written in cannot compile any of this (no Rust, JDK or Android SDK), so this
+# workflow is the build: a green run on `main`/`dev` leaves an installable APK
+# in its artifacts, and a tag publishes one alongside the desktop release.
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "crates/**"
+      - "packaging/android/**"
+      - "scripts/build-web.sh"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "packaging/android/**"
+      - "scripts/build-web.sh"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # The wasm bundle is the only thing the Rust side contributes; the app
+  # itself is Gradle's.
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false
+
+jobs:
+  apk:
+    name: build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-wasm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          # compileSdk 35 and the build-tools AGP 8.7 wants.
+          packages: >-
+            platforms;android-35
+            build-tools;35.0.0
+            platform-tools
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # A CLI whose version matches the `wasm-bindgen` crate in Cargo.lock:
+      # the generated glue and the module refuse to pair otherwise.
+      - name: Install wasm-bindgen-cli
+        run: |
+          version=$(sed -n '/^name = "wasm-bindgen"$/{n;s/version = "\(.*\)"/\1/p}' Cargo.lock)
+          echo "wasm-bindgen $version"
+          cargo install wasm-bindgen-cli --version "$version" --locked
+
+      - name: Build the viewer for the browser
+        run: ./scripts/build-web.sh
+
+      - name: Assemble the APK
+        working-directory: packaging/android
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --console=plain assembleDebug assembleRelease 2>&1 | tee "$RUNNER_TEMP/gradle.log"
+
+      # A failed build's log is only visible to someone signed in to the web UI,
+      # and this one is being written from a sandbox that cannot read it: fold
+      # the interesting part into an annotation the API serves.
+      - name: Explain a failed build
+        if: failure()
+        run: |
+          log="$RUNNER_TEMP/gradle.log"
+          [ -f "$log" ] || exit 0
+          {
+            echo "### Gradle"
+            echo '```'
+            grep -E "^e: |^w: .*(error|warning)|FAILURE|What went wrong|^\* Try|Caused by|error:|Execution failed" "$log" | head -n 40
+            echo '```'
+            echo "### Tail"
+            echo '```'
+            tail -n 40 "$log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^e: |error:|Execution failed|What went wrong" "$log" | head -n 5 | while read -r line; do
+            echo "::error title=Gradle::$line"
+          done
+
+      # will not install. Sign it with a throwaway key (valid for decades, but
+      # a different key each run, so a new build replaces the old one after an
+      # uninstall): an APK that installs is worth more than a stable identity.
+      - name: Sign the release APK
+        run: |
+          keystore="$RUNNER_TEMP/rbxview.jks"
+          keytool -genkeypair -keystore "$keystore" -storepass rbxview \
+            -keypass rbxview -alias rbxview -keyalg RSA -keysize 2048 \
+            -validity 10000 -dname "CN=rbxview CI"
+          unsigned=$(ls packaging/android/app/build/outputs/apk/release/*-unsigned.apk)
+          signed="packaging/android/app/build/outputs/apk/release/rbxview-ci-release.apk"
+          # `setup-android` puts build-tools on PATH, but not every image does.
+          signer=$(command -v apksigner || \
+            ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
+          "$signer" sign --ks "$keystore" --ks-pass pass:rbxview \
+            --key-pass pass:rbxview --out "$signed" "$unsigned"
+          rm "$unsigned"
+
+      # An APK that installs but cannot start the page is the failure mode
+      # this catches: the wasm bundle and the page have to be inside it, and
+      # the page has to have come from the same build the wasm did.
+      - name: The APK holds the viewer
+        run: |
+          apk=packaging/android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -l "$apk" | tee "$RUNNER_TEMP/apk.txt"
+          for want in assets/web/index.html assets/web/pkg/rbx_viewer.js \
+                      assets/web/pkg/rbx_viewer_bg.wasm AndroidManifest.xml; do
+            grep -q " $want\$" "$RUNNER_TEMP/apk.txt" \
+              || { echo "::error::$want is missing from the APK"; exit 1; }
+          done
+          wasm=$(unzip -p "$apk" assets/web/pkg/rbx_viewer_bg.wasm | wc -c)
+          echo "wasm module: $wasm bytes"
+          [ "$wasm" -gt 1000000 ] || { echo "::error::the wasm module looks empty"; exit 1; }
+          if unzip -l "$apk" | grep -qi "assets/web/pkg/.*\.ts\$"; then
+            echo "::warning::wasm-bindgen emitted typescript, which the page does not use"
+          fi
+
+      # Both build types: `debug` for `adb install`, the signed `release` for
+      # sharing a file with someone who has no ADB.
+      - name: Upload the APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rbxview-android-${{ github.sha }}
+          path: |
+            packaging/android/app/build/outputs/apk/debug/*.apk
+            packaging/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+# A tagged release is `release.yml`'s job: it owns `v*`, builds the desktop
+# binaries and publishes them. The APK is attached there, from this workflow's
+# artifact, so a release stays one run.
