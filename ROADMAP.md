@@ -3314,6 +3314,21 @@ both the plain fetch failure and the silent fall back to a default
   Not there yet: WebGL2 (the renderer needs storage buffers and compute),
   threads (union booleans and decodes run on the page's one thread), and a
   size diet (the wasm is ~10 MB, mostly the embedded API dump).
+- [x] The viewer on Android, the same browser build in a Kotlin app
+  (`packaging/android`), for phones. The app serves the page from its own APK
+  over a loopback HTTP server and resolves assets through a Kotlin port of
+  the same resolver (anonymous delivery, Studio's content packages,
+  `SUBSTITUTES`, final-404/transient-503), so no part of the renderer was
+  ported or duplicated. A page cannot pick a file on Android, so the picker
+  is the Storage Access Framework's, and `.rbxl`/`.rbxm`/`.rbxlx`/`.rbxmx`
+  are also `VIEW` intents. Touch (joystick, drag-to-look, pinch, hold
+  buttons) drives the same `Viewer::key`/`look`/`wheel` the desktop mouse and
+  keyboard do, so the camera controller is untouched. WebGPU is in Chrome on
+  Android 12+, but not reliably in the system WebView, so a page that finds
+  no `navigator.gpu` offers to reopen the same loopback URL in Chrome.
+  Ceiling: viewer only (the editor is GPUI Kit and desktop-only), and the
+  CI job is the only place it has been built or run — nothing here has been
+  driven on a physical phone yet.
 - [x] Mouse capture in the free-flight camera, a Win32 backend beside the
   X11 one in `pointer_lock::server`: `ShowCursor` hides, `SetCursorPos`
   warps back to the viewport centre after every move. No `ClipCursor`:
