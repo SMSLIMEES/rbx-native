@@ -1,0 +1,19 @@
+name: explorer-lint-tmp
+on: push
+jobs:
+  lint:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: |
+          cargo clippy --workspace --all-targets --keep-going --message-format=short -- -D warnings > out.txt 2>&1; echo "::warning::clippy exit $?"
+          sed -i 's/\x1b\[[0-9;]*m//g' out.txt
+          grep -E "^crates/.*(warning|error)|^error" out.txt | sort -u | head -45 | while read -r l; do echo "::error::$l"; done
+          grep -v "^\s*\(Compiling\|Checking\|Downloaded\|Fresh\)" out.txt | tail -8 | while read -r l; do echo "::notice::$l"; done
