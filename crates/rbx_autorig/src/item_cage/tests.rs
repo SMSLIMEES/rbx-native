@@ -149,7 +149,10 @@ fn a_sleeve_does_not_tent_the_body_beside_it() {
         assert!(moved < 0.05, "torso vertex {i} moved {moved}");
     }
     let arm = cages.outer.positions.iter().enumerate();
-    for (i, outer) in arm.take(template.positions.len()).skip(torso.positions.len()) {
+    for (i, outer) in arm
+        .take(template.positions.len())
+        .skip(torso.positions.len())
+    {
         let out = outer.distance(offset);
         assert!(out >= 0.75, "arm vertex {i} only {out} out");
     }
