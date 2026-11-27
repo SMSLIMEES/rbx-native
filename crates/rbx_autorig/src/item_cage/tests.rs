@@ -143,8 +143,9 @@ fn a_sleeve_does_not_tent_the_body_beside_it() {
         ..Mesh::default()
     };
     let cages = item_cages(&sleeve, &template);
-    for i in 0..torso.positions.len() {
-        let moved = cages.outer.positions[i].distance(template.positions[i]);
+    let pairs = cages.outer.positions.iter().zip(&template.positions);
+    for (i, (outer, original)) in pairs.enumerate().take(torso.positions.len()) {
+        let moved = outer.distance(*original);
         assert!(moved < 0.05, "torso vertex {i} moved {moved}");
     }
     for i in torso.positions.len()..template.positions.len() {
