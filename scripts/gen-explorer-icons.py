@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Regenerates `crates/rbx_explorer/src/icons/symbols.rs` from Material Symbols.
+
+The icons are Google's Material Symbols (Apache-2.0), rounded, weight 400, as
+published on npm by `@material-symbols/svg-400`. Only the path data of the
+icons the app uses is kept, so the wasm bundle carries a few kilobytes of SVG
+instead of a 3 MB icon font:
+
+    npm pack @material-symbols/svg-400 && tar xzf material-symbols-svg-400-*.tgz
+    scripts/gen-explorer-icons.py package/rounded
+
+Add a name to ICONS (and `-fill` for the filled variant), rerun, commit.
+"""
+import pathlib
+import re
+import sys
+
+# (Rust constant, Material Symbols file name without `.svg`)
+ICONS = [
+    # Chrome of the app.
+    ("ARROW_BACK", "arrow_back"),
+    ("FOLDER_OPEN", "folder_open"),
+    ("SEARCH", "search"),
+    ("CLOSE", "close"),
+    ("SAVE", "save"),
+    ("SAVE_AS", "save_as"),
+    ("MORE_VERT", "more_vert"),
+    ("UNDO", "undo"),
+    ("REDO", "redo"),
+    ("INFO", "info"),
+    ("CHEVRON_RIGHT", "chevron_right"),
+    ("CHECK", "check"),
+    ("HISTORY", "history"),
+    ("ACCOUNT_TREE", "account_tree"),
+    ("ACCOUNT_TREE_FILL", "account_tree-fill"),
+    ("CODE", "code"),
+    ("CODE_BLOCKS", "code_blocks"),
+    ("CODE_BLOCKS_FILL", "code_blocks-fill"),
+    ("CONTRAST", "contrast"),
+    ("LIGHT_MODE", "light_mode"),
+    ("DARK_MODE", "dark_mode"),
+    ("KEYBOARD_TAB", "keyboard_tab"),
+    ("INDENT_DECREASE", "format_indent_decrease"),
+    ("ARROW_LEFT", "keyboard_arrow_left"),
+    ("ARROW_RIGHT", "keyboard_arrow_right"),
+    ("ARROW_UP", "keyboard_arrow_up"),
+    ("ARROW_DOWN", "keyboard_arrow_down"),
+    ("FIND_REPLACE", "find_replace"),
+    ("UNFOLD_LESS", "unfold_less"),
+    ("VISIBILITY", "visibility"),
+    ("VISIBILITY_OFF", "visibility_off"),
+    ("ERROR", "error"),
+    ("TEXT_INCREASE", "text_increase"),
+    ("TEXT_DECREASE", "text_decrease"),
+    ("NUMBERS", "format_list_numbered"),
+    ("RESTART", "restart_alt"),
+    ("DESCRIPTION", "description"),
+    ("DRAFT", "draft"),
+    ("TRANSLATE", "translate"),
+    ("CONTENT_COPY", "content_copy"),
+    ("DELETE", "delete"),
+    ("EDIT", "edit"),
+    ("TUNE", "tune"),
+    ("LIST", "list"),
+    ("MATCH_CASE", "match_case"),
+    ("WRAP_TEXT", "wrap_text"),
+    ("SHARE", "share"),
+    ("FORMAT_LIST_NUMBERED", "format_list_numbered"),
+    # Classes in the Explorer (filled reads better at 20 px).
+    ("C_PUBLIC", "public-fill"),
+    ("C_GROUP", "group-fill"),
+    ("C_PERSON", "person-fill"),
+    ("C_SUN", "light_mode-fill"),
+    ("C_TEXTURE", "texture"),
+    ("C_BOLT", "bolt-fill"),
+    ("C_INVENTORY", "inventory_2-fill"),
+    ("C_DNS", "dns-fill"),
+    ("C_DATABASE", "database-fill"),
+    ("C_DASHBOARD", "dashboard-fill"),
+    ("C_BACKPACK", "backpack-fill"),
+    ("C_HUMAN", "accessibility_new"),
+    ("C_GROUPS", "groups-fill"),
+    ("C_FLAG", "flag-fill"),
+    ("C_VOLUME", "volume_up-fill"),
+    ("C_MUSIC", "music_note"),
+    ("C_CHAT", "chat-fill"),
+    ("C_FOLDER", "folder-fill"),
+    ("C_CUBE", "deployed_code-fill"),
+    ("C_PART", "view_in_ar-fill"),
+    ("C_SHAPES", "shapes-fill"),
+    ("C_JOIN", "join"),
+    ("C_CATEGORY", "category-fill"),
+    ("C_VIDEOCAM", "videocam-fill"),
+    ("C_LANDSCAPE", "landscape-fill"),
+    ("C_WEB", "web-fill"),
+    ("C_FRAME", "crop_square"),
+    ("C_TITLE", "title"),
+    ("C_BUTTON", "buttons_alt-fill"),
+    ("C_IMAGE", "image-fill"),
+    ("C_TEXT_FIELDS", "text_fields"),
+    ("C_SWAP_VERT", "swap_vert"),
+    ("C_ROUNDED_CORNER", "rounded_corner"),
+    ("C_VARIABLES", "variables-fill"),
+    ("C_CELL_TOWER", "cell_tower"),
+    ("C_SYNC", "sync_alt"),
+    ("C_NOTIFICATIONS", "notifications-fill"),
+    ("C_FUNCTIONS", "functions"),
+    ("C_LOCATION", "my_location-fill"),
+    ("C_LINK", "link"),
+    ("C_RUN", "directions_run"),
+    ("C_ANIMATION", "animation"),
+    ("C_WALLPAPER", "wallpaper"),
+    ("C_SPARKLES", "wand_stars-fill"),
+    ("C_LIGHTBULB", "lightbulb-fill"),
+    ("C_FIRE", "local_fire_department-fill"),
+    ("C_CLOUD", "cloud-fill"),
+    ("C_FOGGY", "foggy"),
+    ("C_BLUR", "blur_on"),
+    ("C_TOUCH", "touch_app-fill"),
+    ("C_TOOL", "construction"),
+    ("C_CHECKROOM", "checkroom"),
+    ("C_PIN", "location_on-fill"),
+    ("C_CHAIR", "chair-fill"),
+    ("C_TOKEN", "token-fill"),
+    ("C_SETTINGS", "settings-fill"),
+    ("C_TUNE", "tune"),
+    ("C_SCRIPT", "code_blocks-fill"),
+    ("C_LOCAL_SCRIPT", "devices-fill"),
+    ("C_MODULE_SCRIPT", "data_object"),
+    ("C_EXTENSION", "extension-fill"),
+    ("C_LOCK", "lock-fill"),
+    ("C_GRID", "grid_view-fill"),
+    ("C_PALETTE", "palette-fill"),
+    ("C_TERRAIN", "landscape_2-fill"),
+    ("C_HIGHLIGHT", "highlight-fill"),
+    ("C_STAR", "star-fill"),
+    ("C_SPEED", "speed-fill"),
+]
+
+HEADER = """\
+//! Material Symbols path data (rounded, weight 400, 960-unit viewBox with its
+//! origin at the bottom left, so `viewBox="0 -960 960 960"`).
+//!
+//! Generated by `scripts/gen-explorer-icons.py` from `@material-symbols/svg-400`;
+//! do not edit by hand. Material Symbols are Copyright Google LLC, Apache-2.0.
+
+"""
+
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    source = pathlib.Path(sys.argv[1])
+    out = pathlib.Path(__file__).resolve().parent.parent / "crates/rbx_explorer/src/icons/symbols.rs"
+    lines = [HEADER]
+    for const, name in ICONS:
+        svg = (source / f"{name}.svg").read_text()
+        paths = re.findall(r'<path d="([^"]+)"', svg)
+        if not paths:
+            sys.exit(f"{name}.svg has no path")
+        data = " ".join(paths)
+        lines.append(f'pub const {const}: &str = "{data}";\n')
+    out.write_text("".join(lines))
+    print(f"wrote {len(ICONS)} icons to {out}")
+
+
+if __name__ == "__main__":
+    main()

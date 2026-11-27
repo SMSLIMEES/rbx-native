@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, interactive-widget=resizes-content">
+<meta name="theme-color" content="#f7fbf1">
+<title>RBX Explorer</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<style>
+  @font-face { font-family: "JetBrains Mono"; src: url(pkg/JetBrainsMono-Regular.ttf) format("truetype"); font-display: block; }
+  #boot { position: fixed; inset: 0; display: grid; place-items: center; color: var(--on-surface-variant); }
+</style>
+<script>
+  // Before first paint: the theme the app will pick, so a dark phone does
+  // not flash a light page while the module loads.
+  (function () {
+    var pref = null;
+    try { pref = localStorage.getItem("theme"); } catch (e) {}
+    var dark = pref === "dark" || (pref !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  })();
+</script>
+</head>
+<body>
+<div class="app" id="app"><div id="boot"><svg class="spinner" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg></div></div>
+<div id="overlay"></div>
+<div id="snack"></div>
+<input type="file" id="file" accept=".rbxl,.rbxm,.rbxlx,.rbxmx" hidden>
+<script type="module">
+// `window.rbxHost`: what only the page (or the Android app around it) can
+// do. The wasm module calls these; see `crates/rbx_explorer/src/web/mod.rs`.
+//
+// On Android the `Android` bridge (packaging/android-explorer, MainActivity)
+// opens the system picker, writes files through the Storage Access
+// Framework and keeps the recent list; in a plain browser a file input and
+// a download stand in.
+import init, * as app from "./pkg/rbx_explorer.js";
+
+const android = window.Android || null;
+const fileInput = document.getElementById("file");
+
+function deliver(name, bytes, writable) {
+  app.rbx_loading(name);
+  // Let the spinner paint before the parse blocks the thread.
+  setTimeout(() => {
+    try { app.rbx_open(name, bytes, writable); }
+    catch (err) { app.rbx_open_failed(String(err)); }
+  }, 40);
+}
+
+function toBase64(bytes) {
+  let out = "";
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) {
+    out += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+  }
+  return btoa(out);
+}
+
+window.rbxHost = {
+  pick() {
+    if (android) android.pick();
+    // Deferred: a synthetic click inside the app's own click handler would
+    // re-enter it.
+    else setTimeout(() => fileInput.click(), 0);
+  },
+  save(name, view, overwrite) {
+    const bytes = view.slice();
+    if (android) {
+      // The bridge only carries strings: base64 in chunks, then commit.
+      android.saveBegin();
+      const chunk = 3 * 256 * 1024;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        android.saveChunk(toBase64(bytes.subarray(i, i + chunk)));
+      }
+      android.saveCommit(name, overwrite);
+      return;
+    }
+    // Later, not from inside this call: the wasm app is still busy saving,
+    // and the link's click would reach its click listener mid-click.
+    setTimeout(() => {
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      app.rbx_saved(true, name, "", false);
+    }, 0);
+  },
+  recents() {
+    return android ? android.recents() : "[]";
+  },
+  openRecent(id) {
+    if (android) android.openRecent(id);
+  },
+  setBars(dark) {
+    const surface = dark ? "#10140f" : "#f7fbf1";
+    document.querySelector('meta[name="theme-color"]').content = surface;
+    if (android) android.setBars(dark);
+  },
+  copy(text) {
+    if (android) { android.copy(text); return; }
+    navigator.clipboard?.writeText(text).catch(() => {});
+  },
+  exit() {
+    if (android) android.exit();
+  },
+};
+
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files[0];
+  fileInput.value = "";
+  if (!file) return;
+  app.rbx_loading(file.name);
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    deliver(file.name, bytes, false);
+  } catch (err) {
+    app.rbx_open_failed(String(err));
+  }
+});
+
+// Drag and drop on a desktop browser.
+addEventListener("dragover", (event) => event.preventDefault());
+addEventListener("drop", async (event) => {
+  event.preventDefault();
+  const file = event.dataTransfer?.files?.[0];
+  if (file) deliver(file.name, new Uint8Array(await file.arrayBuffer()), false);
+});
+
+// Calls from the Android app.
+window.rbxOpenFromHost = async (name, writable) => {
+  app.rbx_loading(name);
+  try {
+    const response = await fetch("/doc/current?" + Date.now());
+    if (!response.ok) throw new Error(response.status + " " + response.statusText);
+    deliver(name, new Uint8Array(await response.arrayBuffer()), !!writable);
+  } catch (err) {
+    app.rbx_open_failed(String(err));
+  }
+};
+window.rbxLoading = (name) => app.rbx_loading(name);
+window.rbxOpenFailed = (message) => app.rbx_open_failed(message);
+window.rbxSaved = (ok, name, message, writable) =>
+  app.rbx_saved(!!ok, name || "", message || "", !!writable);
+window.rbxBack = () => app.rbx_back();
+window.rbxRecentsChanged = () => app.rbx_recents_changed();
+
+// The code font must be in before the editor measures a character.
+try { await document.fonts.load('13px "JetBrains Mono"'); } catch (err) {}
+await init();
+// `?demo=<url>` opens a file straight away (handy for screenshots/tests).
+const demo = new URLSearchParams(location.search).get("demo");
+if (demo) {
+  const response = await fetch(demo);
+  deliver(demo.split("/").pop(), new Uint8Array(await response.arrayBuffer()), false);
+}
+android?.ready();
+</script>
+</body>
+</html>

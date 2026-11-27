@@ -25,6 +25,7 @@ docs/redesign/
 
 # The browser build's output (scripts/build-web.sh).
 /crates/rbx_viewer/web/pkg/
+/crates/rbx_explorer/web/pkg/
 
 # tokenforge plans, cheat sheets and run state.
 /.forge/
@@ -36,3 +37,9 @@ docs/redesign/
 /packaging/android/app/build/
 /packaging/android/local.properties
 /packaging/android/app/src/main/assets/web/
+# RBX Explorer's Android app (packaging/android-explorer), same layout.
+/packaging/android-explorer/.gradle/
+/packaging/android-explorer/build/
+/packaging/android-explorer/app/build/
+/packaging/android-explorer/local.properties
+/packaging/android-explorer/app/src/main/assets/web/

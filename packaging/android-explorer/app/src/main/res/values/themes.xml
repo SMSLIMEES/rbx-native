@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- The page draws everything; the frame only matches its surface so
+         nothing flashes while it loads. The page then tints the bars itself
+         (Android.setBars) when the user picks a theme. Edge-to-edge is
+         declined: a plain frame lets adjustResize keep the code editor's key
+         row above the keyboard. -->
+    <style name="Theme.RbxExplorer" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/surface_light</item>
+        <item name="android:statusBarColor">@color/surface_light</item>
+        <item name="android:navigationBarColor">@color/surface_light</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement" tools:targetApi="35">true</item>
+    </style>
+</resources>
