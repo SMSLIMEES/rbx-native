@@ -50,6 +50,9 @@ jobs:
     name: build APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # `contents: write` only for the "latest build" release below.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -165,3 +168,21 @@ jobs:
             packaging/android-explorer/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      # An artifact is a zip behind a GitHub login, awkward to get onto a
+      # phone. The signed APK also goes to one rolling pre-release,
+      # `explorer-latest`, whose download link stays the same build after
+      # build: open it on the phone, tap the .apk, install.
+      - name: Publish the latest build
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          apk="$RUNNER_TEMP/RBX-Explorer.apk"
+          cp packaging/android-explorer/app/build/outputs/apk/release/rbx-explorer-ci-release.apk "$apk"
+          gh release delete explorer-latest --cleanup-tag --yes || true
+          gh release create explorer-latest "$apk" \
+            --prerelease --target "$TARGET" \
+            --title "RBX Explorer — последняя сборка" \
+            --notes "Сборка из ${TARGET:0:7}. Откройте эту страницу на телефоне, нажмите RBX-Explorer.apk и установите (Android попросит разрешить установку из браузера). Перед установкой новой сборки удалите старую: каждая подписана своим ключом."
