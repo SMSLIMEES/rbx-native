@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The page's Material 3 sage-green roles (crates/rbx_explorer/web/style.css)
+     that the frame around it needs: the window behind the page while it
+     loads, and the launcher icon. -->
+<resources>
+    <color name="surface_light">#f7fbf1</color>
+    <color name="surface_dark">#10140f</color>
+    <color name="primary">#3b6939</color>
+    <color name="secondary_container">#d5e8cf</color>
+</resources>

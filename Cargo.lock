@@ -6880,6 +6880,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbx_explorer"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "js-sys",
+ "rbx_binary",
+ "rbx_dom",
+ "rbx_reflection",
+ "rbx_xml",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "rbx_eyedropper"
 version = "0.1.0"
 dependencies = [

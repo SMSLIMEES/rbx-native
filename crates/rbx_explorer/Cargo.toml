@@ -1,0 +1,62 @@
+[package]
+name = "rbx_explorer"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "RBX Explorer: a Material 3 phone app to browse Roblox places/models and edit their scripts"
+
+# The app is a wasm module driving a WebView page (see `web/` and
+# `packaging/android-explorer`). Everything that is not DOM glue, opening and
+# saving files, the Explorer tree, the Luau highlighter, the HTML the screens
+# are made of, is ordinary Rust that builds and is tested on every target; the
+# glue in `src/web` only exists on wasm32. `scripts/build-explorer.sh` builds
+# the module with `cargo rustc --crate-type cdylib`, like the viewer's browser
+# build, so a native build never links a shared library nobody loads.
+
+[dependencies]
+rbx_dom = { path = "../rbx_dom" }
+rbx_binary = { path = "../rbx_binary" }
+rbx_xml = { path = "../rbx_xml" }
+# Class defaults for the binary writer (a class's missing property is saved
+# as its default, see `rbx_binary::serialize_with_defaults`), enum names and
+# property categories for the Properties sheet, and which roots are services.
+rbx_reflection = { path = "../rbx_reflection", features = ["embedded-dump"] }
+
+# The browser side; every one already in `Cargo.lock` through the viewer's
+# own browser build.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+web-sys = { version = "0.3", features = [
+  "Blob",
+  "BlobPropertyBag",
+  "console",
+  "CssStyleDeclaration",
+  "Document",
+  "DomRect",
+  "DomTokenList",
+  "Element",
+  "Event",
+  "EventTarget",
+  "File",
+  "FileList",
+  "HtmlAnchorElement",
+  "HtmlDocument",
+  "HtmlElement",
+  "HtmlInputElement",
+  "HtmlTextAreaElement",
+  "InputEvent",
+  "KeyboardEvent",
+  "Location",
+  "MediaQueryList",
+  "MouseEvent",
+  "Navigator",
+  "Node",
+  "Response",
+  "Storage",
+  "Url",
+  "Window",
+] }
